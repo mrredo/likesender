@@ -18,8 +18,10 @@ var (
 	client = http.Client{}
 	//method = POST
 	//
-	mapp = app.New()
-	win  = mapp.NewWindow("Number guessing game using higher or lower")
+	mapp   = app.New()
+	win    = mapp.NewWindow("Number guessing game using higher or lower")
+	stopCh = make(chan struct{})
+	done   = make(chan bool)
 )
 var urlPost *widget.Entry
 var times *widget.Entry
@@ -34,9 +36,23 @@ func main() {
 	urlPost.PlaceHolder = "VVV viesturi post link..."
 	times = widget.NewEntry()
 	times.PlaceHolder = "How many likes to send...(type -1 for unlimited requests until stopped)"
-	content := container.NewVBox(urlPost, times, Submit)
+	Submit = widget.NewButton("Send Requests", MakeRequest)
+	StopRequests = widget.NewButton("Stop requests", StopRequest)
+	StopRequests.Disable()
+	content := container.NewVBox(urlPost, times, Submit, StopRequests)
+	go func() {
+		for {
+			select {
+			case <-stopCh:
+				StopRequests.Disable()
+				Submit.Enable()
 
-	win.SetContent()
+			default:
+
+			}
+		}
+	}()
+	win.SetContent(content)
 	win.ShowAndRun()
 }
 
@@ -60,21 +76,44 @@ func LikePost(formData url.Values) {
 	resp, _ := client.Do(req)
 	defer resp.Body.Close()
 }
-func MultipleLikes(howmuch int, formData url.Values, stopCh chan struct{}, done chan bool) {
+func MakeRequest() {
+	fmt.Println(10)
+	StopRequests.Importance = widget.DangerImportance
+	Submit.Disable()
+	StopRequests.Enable()
+	MultipleLikes(10, FormData("17427"))
+}
+func StopRequest() {
+	StopRequests.Importance = widget.MediumImportance
+	Submit.Enable()
+	StopRequests.Disable()
+	<-stopCh
+}
+
+func MultipleLikes(howmuch int, formData url.Values) {
 	if howmuch <= -1 {
+	forloop:
 		for {
 			select {
 			case <-stopCh:
-				return
+
+				break forloop
+
 			default:
 				LikePost(formData)
 			}
 		}
 	} else {
+	forloops:
 		for i := 0; i < howmuch; i++ {
-			LikePost(formData)
-
+			select {
+			case <-stopCh:
+				break forloops
+			default:
+				LikePost(formData)
+			}
 		}
-		done <- true
+		<-stopCh
+
 	}
 }

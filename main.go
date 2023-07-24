@@ -3,25 +3,26 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var (
 	Url    = "https://viesturi.edu.lv/wp-admin/admin-ajax.php"
-	Action = "mfn_love"
 	client = http.Client{}
-	//method = POST
-	//
 	mapp   = app.New()
-	win    = mapp.NewWindow("Number guessing game using higher or lower")
+	win    = mapp.NewWindow("VVV viesturi like botter")
 	stopCh = make(chan struct{})
 	done   = make(chan bool)
+	winX   = 500
+	winY   = 700
 )
 var urlPost *widget.Entry
 var times *widget.Entry
@@ -29,8 +30,6 @@ var Submit *widget.Button
 var StopRequests *widget.Button
 
 func main() {
-
-	fmt.Println(ParseUrlToId("https://viesturi.edu.lv/17427-2/"))
 
 	urlPost = widget.NewEntry()
 	urlPost.PlaceHolder = "VVV viesturi post link..."
@@ -52,6 +51,12 @@ func main() {
 			}
 		}
 	}()
+	win.Resize(fyne.Size{
+		Width:  float32(winX),
+		Height: float32(winY),
+	})
+	win.CenterOnScreen()
+	win.SetFixedSize(true)
 	win.SetContent(content)
 	win.ShowAndRun()
 }
@@ -67,7 +72,8 @@ func ParseUrlToId(url1 string) (id string, err error) {
 	if len(url.Path) < 4 {
 		return "", errors.New("invalid path for url")
 	}
-	return strings.Split(url.Path[1:len(url.Path)-1], "-")[0], err
+	url1path := strings.Split(url.Path[1:], "/")[0]
+	return strings.Split(url1path, "-")[0], err
 }
 func LikePost(formData url.Values) {
 	body := bytes.NewBufferString(formData.Encode())
@@ -75,45 +81,67 @@ func LikePost(formData url.Values) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, _ := client.Do(req)
 	defer resp.Body.Close()
+
+	// Signal that the request is completed
+	done <- true
 }
+
 func MakeRequest() {
-	fmt.Println(10)
+	postid, err := ParseUrlToId(urlPost.Text)
+	if err != nil {
+		return
+	}
+	times, err := strconv.Atoi(times.Text)
+	if err != nil {
+		return
+	}
 	StopRequests.Importance = widget.DangerImportance
 	Submit.Disable()
 	StopRequests.Enable()
-	MultipleLikes(10, FormData("17427"))
+
+	// Use the 'done' channel to signal when the request handling is completed
+	go func() {
+		MultipleLikes(times, FormData(postid))
+		done <- true
+	}()
 }
+
 func StopRequest() {
 	StopRequests.Importance = widget.MediumImportance
 	Submit.Enable()
 	StopRequests.Disable()
-	<-stopCh
+
+	// Signal to stop the requests
+	stopCh <- struct{}{}
+
+	// Wait for the request handling to complete
+	<-done
 }
 
 func MultipleLikes(howmuch int, formData url.Values) {
+	ticker := time.NewTicker(time.Millisecond * 400)
+	defer ticker.Stop()
 	if howmuch <= -1 {
-	forloop:
 		for {
 			select {
 			case <-stopCh:
-
-				break forloop
-
-			default:
-				LikePost(formData)
+				return // Stop if we receive a stop signal
+			case <-ticker.C:
+				go LikePost(formData)
 			}
+
 		}
 	} else {
-	forloops:
 		for i := 0; i < howmuch; i++ {
 			select {
 			case <-stopCh:
-				break forloops
-			default:
-				LikePost(formData)
+				return // Stop if we receive a stop signal
+			case <-ticker.C:
+				go LikePost(formData)
 			}
-		}
-		<-stopCh
 
+		}
 	}
+
+	stopCh <- struct{}{}
 }

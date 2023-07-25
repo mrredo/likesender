@@ -7,6 +7,8 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/PuerkitoBio/goquery"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -28,6 +30,7 @@ var urlPost *widget.Entry
 var times *widget.Entry
 var Submit *widget.Button
 var StopRequests *widget.Button
+var PostIds *widget.Select
 
 func main() {
 
@@ -37,8 +40,12 @@ func main() {
 	times.PlaceHolder = "How many likes to send...(type -1 for unlimited requests until stopped)"
 	Submit = widget.NewButton("Send Requests", MakeRequest)
 	StopRequests = widget.NewButton("Stop requests", StopRequest)
+	PostIds = widget.NewSelect([]string{}, func(s string) {})
+	PostIds.Disable()
+	PostIds.PlaceHolder = "Select a post id"
+	urlPost.OnSubmitted = UrlOnSubmit
 	StopRequests.Disable()
-	content := container.NewVBox(urlPost, times, Submit, StopRequests)
+	content := container.NewVBox(urlPost, times, PostIds, Submit, StopRequests)
 	go func() {
 		for {
 			select {
@@ -60,7 +67,9 @@ func main() {
 	win.SetContent(content)
 	win.ShowAndRun()
 }
-
+func UrlOnSubmit(s string) {
+	PostIdsFromUrl(s)
+}
 func FormData(postid string) url.Values {
 	formData := url.Values{}
 	formData.Set("action", "mfn_love")
@@ -144,4 +153,43 @@ func MultipleLikes(howmuch int, formData url.Values) {
 	}
 
 	stopCh <- struct{}{}
+}
+
+func PostIdsFromUrl(urlVVV string) {
+	response, err := http.Get(urlVVV)
+	if err != nil {
+		urlPost.SetText("")
+		PostIds.Disable()
+		return
+	}
+	defer response.Body.Close()
+
+	// Check if the request was successful (status code 200)
+	if response.StatusCode != http.StatusOK {
+		log.Fatalf("Failed to fetch URL: %s returned status code %d", urlVVV, response.StatusCode)
+	}
+
+	// Read the response body into a string
+	htmlContent, err := goquery.NewDocumentFromReader(response.Body)
+	if err != nil {
+		urlPost.SetText("")
+		PostIds.Disable()
+		return
+	}
+	options := []string{}
+	htmlContent.Find(".mfn-love[data-id]").Each(func(_ int, s *goquery.Selection) {
+		var ss, ok = s.Attr("data-id")
+		if ok {
+			options = append(options, ss)
+		}
+	})
+	if len(options) == 0 {
+		urlPost.SetText("")
+		PostIds.Disable()
+	} else {
+		PostIds.Enable()
+		PostIds.Options = options
+		PostIds.Refresh()
+	}
+	return
 }

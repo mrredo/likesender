@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/PuerkitoBio/goquery"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -27,6 +26,7 @@ var (
 	winY   = 700
 )
 var urlPost *widget.Entry
+var urlSubmitUrl *widget.Button
 var times *widget.Entry
 var Submit *widget.Button
 var StopRequests *widget.Button
@@ -39,13 +39,17 @@ func main() {
 	times = widget.NewEntry()
 	times.PlaceHolder = "How many likes to send...(type -1 for unlimited requests until stopped)"
 	Submit = widget.NewButton("Send Requests", MakeRequest)
+	urlSubmitUrl = widget.NewButton("Submit url", func() {
+		UrlOnSubmit(urlPost.Text)
+	})
 	StopRequests = widget.NewButton("Stop requests", StopRequest)
 	PostIds = widget.NewSelect([]string{}, func(s string) {})
 	PostIds.Disable()
 	PostIds.PlaceHolder = "Select a post id"
 	urlPost.OnSubmitted = UrlOnSubmit
+
 	StopRequests.Disable()
-	content := container.NewVBox(urlPost, times, PostIds, Submit, StopRequests)
+	content := container.NewVBox(urlPost, urlSubmitUrl, times, PostIds, Submit, StopRequests)
 	go func() {
 		for {
 			select {
@@ -96,10 +100,6 @@ func LikePost(formData url.Values) {
 }
 
 func MakeRequest() {
-	postid, err := ParseUrlToId(urlPost.Text)
-	if err != nil {
-		return
-	}
 	times, err := strconv.Atoi(times.Text)
 	if err != nil {
 		return
@@ -110,7 +110,7 @@ func MakeRequest() {
 
 	// Use the 'done' channel to signal when the request handling is completed
 	go func() {
-		MultipleLikes(times, FormData(postid))
+		MultipleLikes(times, FormData(PostIds.Selected))
 		done <- true
 	}()
 }
@@ -166,7 +166,10 @@ func PostIdsFromUrl(urlVVV string) {
 
 	// Check if the request was successful (status code 200)
 	if response.StatusCode != http.StatusOK {
-		log.Fatalf("Failed to fetch URL: %s returned status code %d", urlVVV, response.StatusCode)
+		//	log.Fatalf("Failed to fetch URL: %s returned status code %d", urlVVV, response.StatusCode)
+		urlPost.SetText("")
+		PostIds.Disable()
+		return
 	}
 
 	// Read the response body into a string
@@ -190,6 +193,7 @@ func PostIdsFromUrl(urlVVV string) {
 		PostIds.Enable()
 		PostIds.Options = options
 		PostIds.Refresh()
+		PostIds.SetSelectedIndex(0)
 	}
 	return
 }
